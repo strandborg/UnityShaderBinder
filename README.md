@@ -58,4 +58,4 @@ public class MyComponent : MonoBehavior
 ```
 
 # Copyright & License
-Copyright 2022 Mikko Strandborg. This software is licensed under Boost Software License 1.0, See LICENSE.
+Copyright 2021 Mikko Strandborg. This software is licensed under Boost Software License 1.0, See LICENSE.
