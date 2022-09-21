@@ -1,0 +1,16 @@
+{
+    "name": "Varjo.ShaderBinder.Editor",
+    "rootNamespace": "",
+    "references": [
+        "GUID:923c918f5502ecc459fb5c4329fb0942"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
