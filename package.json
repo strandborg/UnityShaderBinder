@@ -1,6 +1,6 @@
 {
     "name": "com.varjo.shaderbinder",
-    "version": "0.0.1-preview",
+    "version": "0.0.2",
     "displayName": "Shader binder utils",
     "description": "Tools to generate HLSL datatypes and to declare and bind shader uniforms and resources",
     "keywords": [
