@@ -890,7 +890,8 @@ namespace Varjo.ShaderBinder
 
     public static class ShaderBinderExtensions
     {
-        private static Dictionary<Type, ShaderBinder> m_Binders = new Dictionary<Type, ShaderBinder>();
+        private static readonly Dictionary<Type, ShaderBinder> m_Binders = new ();
+        private static readonly Dictionary<ComputeShader, int[]> m_KernelIndices = new();
 
         private static ShaderBinder FindOrCreateBinder(Type t)
         {
@@ -918,6 +919,19 @@ namespace Varjo.ShaderBinder
             var b = FindOrCreateBinder(typeof(T));
             b.Apply(me, mat, kernelIndices);
         }
+        // Bind all connected kernel names
+        public static void ApplyShaderProps<T>(this T me, ComputeShader mat)
+        {
+            if (m_KernelIndices.TryGetValue(mat, out var indices))
+            {
+                var b = FindOrCreateBinder(typeof(T));
+                b.Apply(me, mat, indices);
+            }
+            else
+            {
+                Debug.LogError("ApplyShaderProps: No ComputeKernels connected");
+            }
+        }
         public static void ApplyShaderProps<T>(this T me, ComputeShader mat, params ComputeKernel[] kernelIndices)
         {
             var b = FindOrCreateBinder(typeof(T));
@@ -928,6 +942,19 @@ namespace Varjo.ShaderBinder
             var b = FindOrCreateBinder(typeof(T));
             b.Apply(me, mat, cb, kernelIndices);
         }
+        // Bind all connected kernel names
+        public static void ApplyShaderProps<T>(this T me, ComputeShader mat, CommandBuffer cb)
+        {
+            if (m_KernelIndices.TryGetValue(mat, out var indices))
+            {
+                var b = FindOrCreateBinder(typeof(T));
+                b.Apply(me, mat, cb, indices);
+            }
+            else
+            {
+                Debug.LogError("ApplyShaderProps: No ComputeKernels connected");
+            }
+        }
         public static void ApplyShaderProps<T>(this T me, ComputeShader mat, CommandBuffer cb, params ComputeKernel[] kernelIndices)
         {
             var b = FindOrCreateBinder(typeof(T));
@@ -937,6 +964,7 @@ namespace Varjo.ShaderBinder
         public static void ConnectKernels<T>(this T me, ComputeShader cs)
         {
             var kernels = me.GetType().GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static).Where(fi => fi.FieldType == typeof(ComputeKernel));
+            var indices = new List<int>();
             foreach(var k in kernels)
             {
                 var kernel = (ComputeKernel)k.GetValue(me);
@@ -958,8 +986,10 @@ namespace Varjo.ShaderBinder
                 }
 
                 kernel.Connect(cs);
+                indices.Add(kernel.KernelIdx);
                 k.SetValue(me, kernel);
             }
+            m_KernelIndices[cs] = indices.ToArray();
         }
         public static void ConnectKernels<T>(this T me)
         {

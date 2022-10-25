@@ -1,18 +1,16 @@
 {
-    "name": "com.varjo.shaderbinder",
-    "version": "0.0.2",
-    "displayName": "Shader binder utils",
-    "description": "Tools to generate HLSL datatypes and to declare and bind shader uniforms and resources",
-    "keywords": [
-      "shaders"
-    ],
-    "author": {
-      "name": "Varjo Technologies Ltd.",
-      "email": "firstname.lastname@varjo.com",
-      "url": "https://www.varjo.com"
-    },
-    "type": "library",
-    "hideInEditor": false,
-    "dependencies": {
-    }
-  }
+  "name": "com.varjo.shaderbinder",
+  "version": "0.0.3",
+  "displayName": "Shader binder utils",
+  "description": "Tools to generate HLSL datatypes and to declare and bind shader uniforms and resources",
+  "keywords": [
+    "shaders"
+  ],
+  "author": {
+    "name": "Varjo Technologies Ltd.",
+    "email": "firstname.lastname@varjo.com",
+    "url": "https://www.varjo.com"
+  },
+  "type": "library",
+  "hideInEditor": false
+}
