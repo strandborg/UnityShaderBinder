@@ -112,15 +112,17 @@ namespace Varjo.ShaderBinder
         public string Target { get; set; }
     }
 
-    public class ComputeKernel
+    public struct ComputeKernel
     {
         private ComputeShader m_CS;
         private int m_KernelIdx;
-        private readonly string m_Name;
+        public string m_Name;
 
-        public ComputeKernel(string name)
+        public ComputeKernel(string name = "")
         {
             m_Name = name;
+            m_CS = null;
+            m_KernelIdx = 0;
         }
 
         public void Connect(ComputeShader cs)
@@ -899,8 +901,19 @@ namespace Varjo.ShaderBinder
             var kernels = me.GetType().GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static).Where(fi => fi.FieldType == typeof(ComputeKernel));
             foreach(var k in kernels)
             {
-                var kernel = k.GetValue(me) as ComputeKernel;
+                var kernel = (ComputeKernel)k.GetValue(me);
+                if(kernel.m_Name != "")
+                {
+                    string name;
+                    
+                    name = k.Name;
+                    if (name.StartsWith("m_"))
+                        name = name.Substring(2);
+                    kernel.m_Name = name;
+                }
+
                 kernel.Connect(cs);
+                k.SetValue(me, kernel);
             }
         }
         public static void ConnectKernels<T>(this T me)
