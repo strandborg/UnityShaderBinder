@@ -107,9 +107,66 @@ namespace Varjo.ShaderBinder
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = true)]
     public class ShaderKeywordAttribute : Attribute
     {
-        public ShaderKeywordAttribute() { }
+        public ShaderKeywordAttribute(string Target = null, bool IsLocal = false, [CallerFilePath] string SourcePath = null)
+        {
+            this.Target = null;
+            this.IsLocal = IsLocal;
+            this.sourcePath = SourcePath;
+        }
 
         public string Target { get; set; }
+
+        public bool IsLocal { get; set; }
+
+        public string sourcePath;
+    }
+
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = true)]
+    public class ShaderKernelAttribute : Attribute
+    {
+        public ShaderKernelAttribute(string Target = null, [CallerFilePath] string SourcePath = null) { this.Target = null; this.sourcePath = SourcePath; }
+
+        public string Target { get; set; }
+
+        public string sourcePath;
+    }
+
+    public struct ComputeKernel
+    {
+        private ComputeShader m_CS;
+        public int KernelIdx { get; private set; }
+        public string Name { get; internal set; }
+
+        public ComputeKernel(string name = null)
+        {
+            Name = name;
+            m_CS = null;
+            KernelIdx = 0;
+        }
+
+        public void Connect(ComputeShader cs)
+        {
+            m_CS = cs;
+            KernelIdx = m_CS.FindKernel(Name);
+        }
+
+        public void Dispatch(uint x, uint y, uint z)
+        {
+            m_CS.Dispatch(KernelIdx, (int)x, (int)y, (int)z);
+        }
+        public void Dispatch(int x, int y, int z)
+        {
+            m_CS.Dispatch(KernelIdx, x, y, z);
+        }
+        public void DispatchIndirect(ComputeBuffer argsBuffer, uint argsOffset = 0)
+        {
+            m_CS.DispatchIndirect(KernelIdx, argsBuffer, argsOffset);
+        }
+        public void DispatchIndirect(GraphicsBuffer argsBuffer, uint argsOffset = 0)
+        {
+            m_CS.DispatchIndirect(KernelIdx, argsBuffer, argsOffset);
+        }
+
     }
 
     public class TypedBufferBase
@@ -833,7 +890,8 @@ namespace Varjo.ShaderBinder
 
     public static class ShaderBinderExtensions
     {
-        private static Dictionary<Type, ShaderBinder> m_Binders = new Dictionary<Type, ShaderBinder>();
+        private static readonly Dictionary<Type, ShaderBinder> m_Binders = new ();
+        private static readonly Dictionary<ComputeShader, int[]> m_KernelIndices = new();
 
         private static ShaderBinder FindOrCreateBinder(Type t)
         {
@@ -861,12 +919,90 @@ namespace Varjo.ShaderBinder
             var b = FindOrCreateBinder(typeof(T));
             b.Apply(me, mat, kernelIndices);
         }
+        // Bind all connected kernel names
+        public static void ApplyShaderProps<T>(this T me, ComputeShader mat)
+        {
+            if (m_KernelIndices.TryGetValue(mat, out var indices))
+            {
+                var b = FindOrCreateBinder(typeof(T));
+                b.Apply(me, mat, indices);
+            }
+            else
+            {
+                Debug.LogError("ApplyShaderProps: No ComputeKernels connected");
+            }
+        }
+        public static void ApplyShaderProps<T>(this T me, ComputeShader mat, params ComputeKernel[] kernelIndices)
+        {
+            var b = FindOrCreateBinder(typeof(T));
+            b.Apply(me, mat, kernelIndices.Select(k => k.KernelIdx).ToArray());
+        }
         public static void ApplyShaderProps<T>(this T me, ComputeShader mat, CommandBuffer cb, params int[] kernelIndices)
         {
             var b = FindOrCreateBinder(typeof(T));
             b.Apply(me, mat, cb, kernelIndices);
         }
+        // Bind all connected kernel names
+        public static void ApplyShaderProps<T>(this T me, ComputeShader mat, CommandBuffer cb)
+        {
+            if (m_KernelIndices.TryGetValue(mat, out var indices))
+            {
+                var b = FindOrCreateBinder(typeof(T));
+                b.Apply(me, mat, cb, indices);
+            }
+            else
+            {
+                Debug.LogError("ApplyShaderProps: No ComputeKernels connected");
+            }
+        }
+        public static void ApplyShaderProps<T>(this T me, ComputeShader mat, CommandBuffer cb, params ComputeKernel[] kernelIndices)
+        {
+            var b = FindOrCreateBinder(typeof(T));
+            b.Apply(me, mat, cb, kernelIndices.Select(k => k.KernelIdx).ToArray());
+        }
 
+        public static void ConnectKernels<T>(this T me, ComputeShader cs)
+        {
+            var kernels = me.GetType().GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static).Where(fi => fi.FieldType == typeof(ComputeKernel));
+            var indices = new List<int>();
+            foreach(var k in kernels)
+            {
+                var kernel = (ComputeKernel)k.GetValue(me);
+                if(kernel.Name == null)
+                {
+                    string name = null;
+                    var attr = k.GetCustomAttribute<ShaderKernelAttribute>();
+                    if (attr != null && attr.Target != null)
+                    {
+                        name = attr.Target;
+                    }
+                    if(name == null)
+                    {
+                        name = k.Name;
+                        if (name.StartsWith("m_"))
+                            name = name[2..];
+                    }
+                    kernel.Name = name;
+                }
+
+                kernel.Connect(cs);
+                indices.Add(kernel.KernelIdx);
+                k.SetValue(me, kernel);
+            }
+            m_KernelIndices[cs] = indices.ToArray();
+        }
+        public static void ConnectKernels<T>(this T me)
+        {
+            var shaders = me.GetType().GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static).Where(fi => fi.FieldType == typeof(ComputeShader));
+
+            if(shaders.Count() != 1)
+            {
+                Debug.LogError("ConnectKernels called with no (or multiple) ComputeShader fields in the calling class!");
+            }
+            var cs = shaders.First().GetValue(me) as ComputeShader;
+            ConnectKernels(me, cs);
+
+        }
     }
 
 }

@@ -15,6 +15,130 @@ using Varjo.ShaderBinder;
 
 namespace Varjo.ShaderBinding.Editor
 {
+    internal class ShaderKeywordGenerator
+    {
+        public FieldInfo field = null;
+        public ShaderKeywordAttribute attribute = null;
+
+        private string output;
+        private List<string> errors;
+
+        public ShaderKeywordGenerator(FieldInfo field, ShaderKeywordAttribute attr)
+        {
+            this.field = field;
+            this.attribute = attr;
+        }
+
+        public string Emit()
+        {
+            return output;
+        }
+        public void PrintErrors()
+        {
+            if (errors != null)
+            {
+                foreach (var e in errors)
+                {
+                    Debug.LogError(e);
+                }
+
+            }
+        }
+
+        public bool Generate()
+        {
+            string mult = attribute.IsLocal ? "multi_compile_local" : "multi_compile";
+            if (field.FieldType.IsEnum)
+            {
+                // Multi-value keyword, grab the names from the enum values
+                output = "#pragma " + mult;
+//                var names = new List<string>();
+//                var values = new List<int>();
+                var members = field.FieldType.GetMembers(BindingFlags.Public | BindingFlags.Static);
+                foreach (var m in members)
+                {
+                    string name = m.Name;
+                    var eAttr = m.GetCustomAttribute<ShaderKeywordAttribute>();
+                    if (name.StartsWith("m_"))
+                        name = name.Remove(0, 2);
+                    if (eAttr != null && eAttr.Target != null)
+                        name = eAttr.Target;
+
+                    output += " " + name;
+//                    names.Add(name);
+//                    values.Add((int)Enum.Parse(field.FieldType, m.Name));
+                }
+                output += "\n";
+            }
+            else
+            {
+                string name = "";
+                if (field != null)
+                {
+                    name = field.Name;
+                }
+
+                if (name.StartsWith("m_"))
+                    name = name.Remove(0, 2);
+
+                if (attribute.Target != null)
+                    name = attribute.Target;
+                output = $"#pragma {mult} __ {name}\n";
+
+            }
+            return true;
+        }
+    }
+
+    internal class ShaderKernelGenerator
+    {
+        public FieldInfo field = null;
+        public ShaderKernelAttribute attribute = null;
+
+        private string output;
+        private List<string> errors;
+
+        public ShaderKernelGenerator(FieldInfo field, ShaderKernelAttribute attr)
+        {
+            this.field = field;
+            this.attribute = attr;
+        }
+
+        public string Emit()
+        {
+            return output;
+        }
+        public void PrintErrors()
+        {
+            if (errors != null)
+            {
+                foreach (var e in errors)
+                {
+                    Debug.LogError(e);
+                }
+
+            }
+        }
+
+        public bool Generate()
+        {
+            string name = "";
+            if (field != null)
+            {
+                name = field.Name;
+            }
+
+            if (name.StartsWith("m_"))
+                name = name.Remove(0, 2);
+
+            if (attribute.Target != null)
+                name = attribute.Target;
+
+            output = $"#pragma kernel {name}\n";
+            return true;
+        }
+    }
+
     internal class ShaderBindingGenerator
     {
         public FieldInfo field = null;
