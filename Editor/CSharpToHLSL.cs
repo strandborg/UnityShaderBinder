@@ -86,28 +86,28 @@ namespace Varjo.ShaderBinding.Editor
             await Task.WhenAll(sourceGenerators.Select(async it =>
                 await GenerateAsync($"{it.Key}.hlsl", $"{Path.ChangeExtension(it.Key, "custom")}.hlsl", it.Value.Item1, it.Value.Item2)));
 
-            var kernelGenerators = new Dictionary<string, List<ShaderKernelGenerator>>();
+            var keywordGenerators = new Dictionary<string, List<ShaderKeywordGenerator>>();
 
             // Extract all types with the ShaderKernel tag
-            var kernelAttrs = from assembly in AppDomain.CurrentDomain.GetAssemblies()
+            var keywordAttrs = from assembly in AppDomain.CurrentDomain.GetAssemblies()
                                  from type in assembly.GetTypes()
                                  where (type.IsClass || (type.IsValueType && !type.IsEnum && !type.IsPrimitive))
                                  from field in type.GetFields(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
-                                 from attr in field.GetCustomAttributes(typeof(ShaderKernelAttribute), false).Cast<ShaderKernelAttribute>()
+                                 from attr in field.GetCustomAttributes(typeof(ShaderKeywordAttribute), false).Cast<ShaderKeywordAttribute>()
                                  select (attr, field);
 
-            foreach (var (attr, field) in kernelAttrs)
+            foreach (var (attr, field) in keywordAttrs)
             {
-                if (!kernelGenerators.TryGetValue(attr.sourcePath, out var generators))
+                if (!keywordGenerators.TryGetValue(attr.sourcePath, out var generators))
                 {
                     generators = new();
-                    kernelGenerators.Add(attr.sourcePath, generators);
+                    keywordGenerators.Add(attr.sourcePath, generators);
                 }
 
-                generators.Add(new ShaderKernelGenerator(field, attr));
+                generators.Add(new ShaderKeywordGenerator(field, attr));
             }
-            await Task.WhenAll(kernelGenerators.Select(async it =>
-                await GenerateKernelsAsync($"{it.Key}.kernels.hlsl", $"{Path.ChangeExtension(it.Key, "custom")}.hlsl", it.Value)));
+            await Task.WhenAll(keywordGenerators.Select(async it =>
+                await GenerateKeywordsAsync($"{it.Key}.pragmas.hlsl", $"{Path.ChangeExtension(it.Key, "custom")}.hlsl", it.Value)));
 
             Debug.Log("Generation completed");
         }
@@ -232,8 +232,8 @@ namespace Varjo.ShaderBinding.Editor
         /// <param name="targetCustomFilename">Path of the custom file to include. (If it exists)</param>
         /// <param name="generators">Generators to execute.</param>
         /// <returns>Awaitable task.</returns>
-        private static async Task GenerateKernelsAsync(string targetFilename, string targetCustomFilename,
-            List<ShaderKernelGenerator> generators)
+        private static async Task GenerateKeywordsAsync(string targetFilename, string targetCustomFilename,
+            List<ShaderKeywordGenerator> generators)
         {
             var skipFile = false;
 
@@ -292,6 +292,7 @@ namespace Varjo.ShaderBinding.Editor
             await writer.WriteLineAsync();
             await writer.WriteLineAsync("#ifndef " + guard);
             await writer.WriteLineAsync("#define " + guard);
+            await writer.WriteLineAsync();
 
             foreach (var gen in generators)
                 await writer.WriteAsync(gen.Emit().Replace("\n", writer.NewLine));

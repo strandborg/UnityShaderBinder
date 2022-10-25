@@ -107,9 +107,18 @@ namespace Varjo.ShaderBinder
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = true)]
     public class ShaderKeywordAttribute : Attribute
     {
-        public ShaderKeywordAttribute() { Target = null; }
+        public ShaderKeywordAttribute(string Target = null, bool IsLocal = false, [CallerFilePath] string SourcePath = null)
+        {
+            this.Target = null;
+            this.IsLocal = IsLocal;
+            this.sourcePath = SourcePath;
+        }
 
         public string Target { get; set; }
+
+        public bool IsLocal { get; set; }
+
+        public string sourcePath;
     }
 
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = true)]
@@ -125,30 +134,39 @@ namespace Varjo.ShaderBinder
     public struct ComputeKernel
     {
         private ComputeShader m_CS;
-        private int m_KernelIdx;
-        public string m_Name;
+        public int KernelIdx { get; private set; }
+        public string Name { get; internal set; }
 
         public ComputeKernel(string name = null)
         {
-            m_Name = name;
+            Name = name;
             m_CS = null;
-            m_KernelIdx = 0;
+            KernelIdx = 0;
         }
 
         public void Connect(ComputeShader cs)
         {
             m_CS = cs;
-            m_KernelIdx = m_CS.FindKernel(m_Name);
+            KernelIdx = m_CS.FindKernel(Name);
         }
 
         public void Dispatch(uint x, uint y, uint z)
         {
-            m_CS.Dispatch(m_KernelIdx, (int)x, (int)y, (int)z);
+            m_CS.Dispatch(KernelIdx, (int)x, (int)y, (int)z);
         }
         public void Dispatch(int x, int y, int z)
         {
-            m_CS.Dispatch(m_KernelIdx, x, y, z);
+            m_CS.Dispatch(KernelIdx, x, y, z);
         }
+        public void DispatchIndirect(ComputeBuffer argsBuffer, uint argsOffset = 0)
+        {
+            m_CS.DispatchIndirect(KernelIdx, argsBuffer, argsOffset);
+        }
+        public void DispatchIndirect(GraphicsBuffer argsBuffer, uint argsOffset = 0)
+        {
+            m_CS.DispatchIndirect(KernelIdx, argsBuffer, argsOffset);
+        }
+
     }
 
     public class TypedBufferBase
@@ -900,10 +918,20 @@ namespace Varjo.ShaderBinder
             var b = FindOrCreateBinder(typeof(T));
             b.Apply(me, mat, kernelIndices);
         }
+        public static void ApplyShaderProps<T>(this T me, ComputeShader mat, params ComputeKernel[] kernelIndices)
+        {
+            var b = FindOrCreateBinder(typeof(T));
+            b.Apply(me, mat, kernelIndices.Select(k => k.KernelIdx).ToArray());
+        }
         public static void ApplyShaderProps<T>(this T me, ComputeShader mat, CommandBuffer cb, params int[] kernelIndices)
         {
             var b = FindOrCreateBinder(typeof(T));
             b.Apply(me, mat, cb, kernelIndices);
+        }
+        public static void ApplyShaderProps<T>(this T me, ComputeShader mat, CommandBuffer cb, params ComputeKernel[] kernelIndices)
+        {
+            var b = FindOrCreateBinder(typeof(T));
+            b.Apply(me, mat, cb, kernelIndices.Select(k => k.KernelIdx).ToArray());
         }
 
         public static void ConnectKernels<T>(this T me, ComputeShader cs)
@@ -912,7 +940,7 @@ namespace Varjo.ShaderBinder
             foreach(var k in kernels)
             {
                 var kernel = (ComputeKernel)k.GetValue(me);
-                if(kernel.m_Name == null)
+                if(kernel.Name == null)
                 {
                     string name = null;
                     var attr = k.GetCustomAttribute<ShaderKernelAttribute>();
@@ -926,7 +954,7 @@ namespace Varjo.ShaderBinder
                         if (name.StartsWith("m_"))
                             name = name[2..];
                     }
-                    kernel.m_Name = name;
+                    kernel.Name = name;
                 }
 
                 kernel.Connect(cs);
