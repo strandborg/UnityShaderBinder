@@ -112,6 +112,33 @@ namespace Varjo.ShaderBinder
         public string Target { get; set; }
     }
 
+    public class ComputeKernel
+    {
+        private ComputeShader m_CS;
+        private int m_KernelIdx;
+        private readonly string m_Name;
+
+        public ComputeKernel(string name)
+        {
+            m_Name = name;
+        }
+
+        public void Connect(ComputeShader cs)
+        {
+            m_CS = cs;
+            m_KernelIdx = m_CS.FindKernel(m_Name);
+        }
+
+        public void Dispatch(uint x, uint y, uint z)
+        {
+            m_CS.Dispatch(m_KernelIdx, (int)x, (int)y, (int)z);
+        }
+        public void Dispatch(int x, int y, int z)
+        {
+            m_CS.Dispatch(m_KernelIdx, x, y, z);
+        }
+    }
+
     public class TypedBufferBase
     {
         public GraphicsBuffer Buffer { get; set; }
@@ -867,6 +894,27 @@ namespace Varjo.ShaderBinder
             b.Apply(me, mat, cb, kernelIndices);
         }
 
+        public static void ConnectKernels<T>(this T me, ComputeShader cs)
+        {
+            var kernels = me.GetType().GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static).Where(fi => fi.FieldType == typeof(ComputeKernel));
+            foreach(var k in kernels)
+            {
+                var kernel = k.GetValue(me) as ComputeKernel;
+                kernel.Connect(cs);
+            }
+        }
+        public static void ConnectKernels<T>(this T me)
+        {
+            var shaders = me.GetType().GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static).Where(fi => fi.FieldType == typeof(ComputeShader));
+
+            if(shaders.Count() != 1)
+            {
+                Debug.LogError("ConnectKernels called with no (or multiple) ComputeShader fields in the calling class!");
+            }
+            var cs = shaders.First().GetValue(me) as ComputeShader;
+            ConnectKernels(me, cs);
+
+        }
     }
 
 }
