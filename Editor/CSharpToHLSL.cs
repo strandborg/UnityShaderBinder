@@ -86,6 +86,29 @@ namespace Varjo.ShaderBinding.Editor
             await Task.WhenAll(sourceGenerators.Select(async it =>
                 await GenerateAsync($"{it.Key}.hlsl", $"{Path.ChangeExtension(it.Key, "custom")}.hlsl", it.Value.Item1, it.Value.Item2)));
 
+            var kernelGenerators = new Dictionary<string, List<ShaderKernelGenerator>>();
+
+            // Extract all types with the ShaderKernel tag
+            var kernelAttrs = from assembly in AppDomain.CurrentDomain.GetAssemblies()
+                                 from type in assembly.GetTypes()
+                                 where (type.IsClass || (type.IsValueType && !type.IsEnum && !type.IsPrimitive))
+                                 from field in type.GetFields(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
+                                 from attr in field.GetCustomAttributes(typeof(ShaderKernelAttribute), false).Cast<ShaderKernelAttribute>()
+                                 select (attr, field);
+
+            foreach (var (attr, field) in kernelAttrs)
+            {
+                if (!kernelGenerators.TryGetValue(attr.sourcePath, out var generators))
+                {
+                    generators = new();
+                    kernelGenerators.Add(attr.sourcePath, generators);
+                }
+
+                generators.Add(new ShaderKernelGenerator(field, attr));
+            }
+            await Task.WhenAll(kernelGenerators.Select(async it =>
+                await GenerateKernelsAsync($"{it.Key}.kernels.hlsl", $"{Path.ChangeExtension(it.Key, "custom")}.hlsl", it.Value)));
+
             Debug.Log("Generation completed");
         }
 
@@ -201,5 +224,86 @@ namespace Varjo.ShaderBinding.Editor
             if (File.Exists(targetCustomFilename))
                 await writer.WriteAsync($"#include \"{Path.GetFileName(targetCustomFilename)}\"");
         }
+
+        /// <summary>
+        ///     Generate all shader code from <paramref name="generators" /> into <paramref name="targetFilename" />.
+        /// </summary>
+        /// <param name="targetFilename">Path of the file to generate.</param>
+        /// <param name="targetCustomFilename">Path of the custom file to include. (If it exists)</param>
+        /// <param name="generators">Generators to execute.</param>
+        /// <returns>Awaitable task.</returns>
+        private static async Task GenerateKernelsAsync(string targetFilename, string targetCustomFilename,
+            List<ShaderKernelGenerator> generators)
+        {
+            var skipFile = false;
+
+            // Emit atomic element for all generators
+            foreach (var gen in generators.Where(gen => !gen.Generate()))
+            {
+                // Error reporting will be done by the generator.  Skip this file.
+                Debug.LogError("Error converting " + targetFilename);
+                gen.PrintErrors();
+                skipFile = true;
+                break;
+            }
+
+            // If an error occured during generation, we abort this file
+            if (skipFile)
+                return;
+
+            // Check access to the file
+            if (File.Exists(targetFilename))
+            {
+                FileInfo info = null;
+                try
+                {
+                    info = new FileInfo(targetFilename);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    Debug.Log("Access to " + targetFilename + " is denied. Skipping it.");
+                    return;
+                }
+                catch (SecurityException)
+                {
+                    Debug.Log("You do not have permission to access " + targetFilename + ". Skipping it.");
+                    return;
+                }
+
+                if (info?.IsReadOnly ?? false)
+                {
+                    Debug.Log(targetFilename + " is ReadOnly. Skipping it.");
+                    return;
+                }
+            }
+
+            // Generate content
+            using var writer = File.CreateText(targetFilename);
+            writer.NewLine = Environment.NewLine;
+
+            // Include guard name
+            var guard = Path.GetFileName(targetFilename).Replace(".", "_").ToUpper();
+            if (!char.IsLetter(guard[0]))
+                guard = "_" + guard;
+
+            await writer.WriteLineAsync("//");
+            await writer.WriteLineAsync("// This file was automatically generated. Please don't edit by hand. Execute Editor command [ Edit > ShaderUtils > Generate Shader Includes ] instead");
+            await writer.WriteLineAsync("//");
+            await writer.WriteLineAsync();
+            await writer.WriteLineAsync("#ifndef " + guard);
+            await writer.WriteLineAsync("#define " + guard);
+
+            foreach (var gen in generators)
+                await writer.WriteAsync(gen.Emit().Replace("\n", writer.NewLine));
+
+            await writer.WriteLineAsync();
+
+            await writer.WriteLineAsync("#endif");
+
+            if (File.Exists(targetCustomFilename))
+                await writer.WriteAsync($"#include \"{Path.GetFileName(targetCustomFilename)}\"");
+        }
+
+
     }
 }

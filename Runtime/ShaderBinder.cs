@@ -115,9 +115,11 @@ namespace Varjo.ShaderBinder
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = true)]
     public class ShaderKernelAttribute : Attribute
     {
-        public ShaderKernelAttribute() { Target = null; }
+        public ShaderKernelAttribute(string Target = null, [CallerFilePath] string SourcePath = null) { this.Target = null; this.sourcePath = SourcePath; }
 
         public string Target { get; set; }
+
+        public string sourcePath;
     }
 
     public struct ComputeKernel

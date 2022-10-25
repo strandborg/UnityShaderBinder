@@ -15,6 +15,55 @@ using Varjo.ShaderBinder;
 
 namespace Varjo.ShaderBinding.Editor
 {
+    internal class ShaderKernelGenerator
+    {
+        public FieldInfo field = null;
+        public ShaderKernelAttribute attribute = null;
+
+        private string output;
+        private List<string> errors;
+
+        public ShaderKernelGenerator(FieldInfo field, ShaderKernelAttribute attr)
+        {
+            this.field = field;
+            this.attribute = attr;
+        }
+
+        public string Emit()
+        {
+            return output;
+        }
+        public void PrintErrors()
+        {
+            if (errors != null)
+            {
+                foreach (var e in errors)
+                {
+                    Debug.LogError(e);
+                }
+
+            }
+        }
+
+        public bool Generate()
+        {
+            string name = "";
+            if (field != null)
+            {
+                name = field.Name;
+            }
+
+            if (name.StartsWith("m_"))
+                name = name.Remove(0, 2);
+
+            if (attribute.Target != null)
+                name = attribute.Target;
+
+            output = $"#pragma kernel {name}";
+            return true;
+        }
+    }
+
     internal class ShaderBindingGenerator
     {
         public FieldInfo field = null;
