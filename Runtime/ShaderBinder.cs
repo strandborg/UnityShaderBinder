@@ -107,7 +107,15 @@ namespace Varjo.ShaderBinder
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = true)]
     public class ShaderKeywordAttribute : Attribute
     {
-        public ShaderKeywordAttribute() { }
+        public ShaderKeywordAttribute() { Target = null; }
+
+        public string Target { get; set; }
+    }
+
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = true)]
+    public class ShaderKernelAttribute : Attribute
+    {
+        public ShaderKernelAttribute() { Target = null; }
 
         public string Target { get; set; }
     }
@@ -118,7 +126,7 @@ namespace Varjo.ShaderBinder
         private int m_KernelIdx;
         public string m_Name;
 
-        public ComputeKernel(string name = "")
+        public ComputeKernel(string name = null)
         {
             m_Name = name;
             m_CS = null;
@@ -902,13 +910,20 @@ namespace Varjo.ShaderBinder
             foreach(var k in kernels)
             {
                 var kernel = (ComputeKernel)k.GetValue(me);
-                if(kernel.m_Name != "")
+                if(kernel.m_Name == null)
                 {
-                    string name;
-                    
-                    name = k.Name;
-                    if (name.StartsWith("m_"))
-                        name = name.Substring(2);
+                    string name = null;
+                    var attr = k.GetCustomAttribute<ShaderKernelAttribute>();
+                    if (attr != null && attr.Target != null)
+                    {
+                        name = attr.Target;
+                    }
+                    if(name == null)
+                    {
+                        name = k.Name;
+                        if (name.StartsWith("m_"))
+                            name = name[2..];
+                    }
                     kernel.m_Name = name;
                 }
 
