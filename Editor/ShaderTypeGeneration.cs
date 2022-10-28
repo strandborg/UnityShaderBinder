@@ -160,10 +160,14 @@ namespace Varjo.ShaderBinding.Editor
             this.attribute = attr;
         }
 
-        private string TypePrefix(Type t, ShaderValueAttribute attr = null)
+        private string TypePrefix(Type t, ShaderValueAttribute attr)
         {
             if(attr != null && attr.HLSLType != null)
                 return attr.HLSLType;
+
+            bool isHalf = false;
+            if (attr != null && attr.IsHalf)
+                isHalf = true;
 
             if (t == typeof(int))
                 return "int";
@@ -172,13 +176,13 @@ namespace Varjo.ShaderBinding.Editor
             else if (t == typeof(bool))
                 return "int";
             else if (t == typeof(float))
-                return "float";
+                return isHalf ? "half" : "float";
             else if (t == typeof(Vector2))
-                return "float2";
+                return isHalf ? "half2" : "float2";
             else if (t == typeof(Vector3))
-                return "float3";
+                return isHalf ? "half3" : "float3";
             else if (t == typeof(Vector4))
-                return "float4";
+                return isHalf ? "half4" : "float4";
             else if (t == typeof(Vector3Int))
                 return "uint3";
             else if (t == typeof(Vector2Int))
@@ -186,11 +190,11 @@ namespace Varjo.ShaderBinding.Editor
             else if (t == typeof(float[]))
                 return "float";
             else if (t == typeof(Vector4[]))
-                return "float4";
+                return isHalf ? "half4" : "float4";
             else if (t == typeof(Matrix4x4))
-                return "float4x4";
+                return isHalf ? "half4x4" : "float4x4";
             else if (t == typeof(Matrix4x4[]))
-                return "float4x4";
+                return isHalf ? "half4x4" : "float4x4";
             else if (typeof(Texture).IsAssignableFrom(t))
             {
                 if (attr == null || attr.InnerType == null)
@@ -201,7 +205,7 @@ namespace Varjo.ShaderBinding.Editor
                     res += "Texture" + attr.TexDimension + "D";
                     if (attr.IsTexArray)
                         res += "Array";
-                    return res + "<" + TypePrefix(attr.InnerType) + ">";
+                    return res + "<" + TypePrefix(attr.InnerType, attr) + ">";
                 }
             }
             else if (t == typeof(ComputeBuffer) || t == typeof(GraphicsBuffer))
@@ -212,22 +216,22 @@ namespace Varjo.ShaderBinding.Editor
                     return "";
                 }
                 if (attr.IsUAV)
-                    return "RWStructuredBuffer<" + TypePrefix(attr.InnerType) + ">";
+                    return "RWStructuredBuffer<" + TypePrefix(attr.InnerType, attr) + ">";
                 else
-                    return "StructuredBuffer<" + TypePrefix(attr.InnerType) + ">";
+                    return "StructuredBuffer<" + TypePrefix(attr.InnerType, attr) + ">";
             }
             else if(t.IsGenericType && t.GetGenericTypeDefinition() == typeof(StructuredBuffer<>))
             {
                 var innerType = t.GenericTypeArguments[0];
-                return "StructuredBuffer<"+ TypePrefix(innerType) + ">";
+                return "StructuredBuffer<"+ TypePrefix(innerType, attr) + ">";
             }
             else if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(RWStructuredBuffer<>))
             {
                 var innerType = t.GenericTypeArguments[0];
                 if(!attr.IsUAV && attr.AddRW)
-                    return "StructuredBuffer<" + TypePrefix(innerType) + ">";
+                    return "StructuredBuffer<" + TypePrefix(innerType, attr) + ">";
                 else
-                    return "RWStructuredBuffer<" + TypePrefix(innerType) + ">";
+                    return "RWStructuredBuffer<" + TypePrefix(innerType, attr) + ">";
             }
             else if (t.GetCustomAttributes(typeof(GenerateHLSL), false).Length > 0)
             {

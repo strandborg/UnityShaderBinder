@@ -58,6 +58,7 @@ namespace Varjo.ShaderBinder
                                     int ArraySize = 0,
                                     bool IsTexArray = false,
                                     int TexDimension = 2,
+                                    bool IsHalf = false,
                                     [CallerFilePath] string SourcePath = null)
         {
             this.Target = Target;
@@ -70,6 +71,7 @@ namespace Varjo.ShaderBinder
             this.AddRW = AddRW;
             this.IsTexArray = IsTexArray;
             this.TexDimension = TexDimension;
+            this.IsHalf = IsHalf;
             this.sourcePath = SourcePath;
         }
 
@@ -96,6 +98,8 @@ namespace Varjo.ShaderBinder
         
         // If set, creates additional UAV variant on HLSL side with 'RW' suffix.
         public bool AddRW { get; set; }
+        // If set, indicates a half-precision floating point type
+        public bool IsHalf { get; set; }
 
         public bool IsTexArray { get; set; }
 
