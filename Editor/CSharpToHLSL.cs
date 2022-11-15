@@ -27,87 +27,101 @@ namespace Varjo.ShaderBinding.Editor
         /// <returns>An awaitable task.</returns>
         public static async Task GenerateAll()
         {
-            // Store per source file path the generator definitions
-            var sourceGenerators = new Dictionary<string, (List<ShaderTypeGenerator>, List<ShaderBindingGenerator>)>();
-
-            // Extract all types with the GenerateHLSL tag
-            foreach (var type in TypeCache.GetTypesWithAttribute<GenerateHLSL>())
+            try
             {
-                var attr = type.GetCustomAttributes(typeof(GenerateHLSL), false).First() as GenerateHLSL;
-                if (!sourceGenerators.TryGetValue(attr.sourcePath, out var generators))
+                // Store per source file path the generator definitions
+                var sourceGenerators = new Dictionary<string, (List<ShaderTypeGenerator>, List<ShaderBindingGenerator>)>();
+                var keywordGenerators = new Dictionary<string, List<ShaderKeywordGenerator>>();
+
+                // Extract all types with the GenerateHLSL tag
+                foreach (var type in TypeCache.GetTypesWithAttribute<GenerateHLSL>())
                 {
-                    generators = (new List<ShaderTypeGenerator>(), new List<ShaderBindingGenerator>());
-                    sourceGenerators.Add(attr.sourcePath, generators);
+                    var attr = type.GetCustomAttributes(typeof(GenerateHLSL), false).First() as GenerateHLSL;
+                    if (!sourceGenerators.TryGetValue(attr.sourcePath, out var generators))
+                    {
+                        generators = (new List<ShaderTypeGenerator>(), new List<ShaderBindingGenerator>());
+                        sourceGenerators.Add(attr.sourcePath, generators);
+                    }
+
+                    generators.Item1.Add(new ShaderTypeGenerator(type, attr));
+                }
+                // GetTypes() may throw so we need to open the query up
+                // Extract all types with the ShaderValue tag
+                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+
+                foreach(var ass in assemblies)
+                {
+                    try
+                    {
+                        var types = ass.GetTypes();
+
+                        var fieldsWithAttr = from type in types
+                                             where (type.IsClass || (type.IsValueType && !type.IsEnum && !type.IsPrimitive))
+                                             from field in type.GetFields(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
+                                             from attr in field.GetCustomAttributes(typeof(ShaderValueAttribute), false).Cast<ShaderValueAttribute>()
+                                             where attr.GenerateHLSL == true
+                                             select (attr, field);
+
+                        foreach (var (attr, field) in fieldsWithAttr)
+                        {
+                            if (!sourceGenerators.TryGetValue(attr.sourcePath, out var generators))
+                            {
+                                generators = (new(), new());
+                                sourceGenerators.Add(attr.sourcePath, generators);
+                            }
+
+                            generators.Item2.Add(new ShaderBindingGenerator(field, attr));
+                        }
+                        // And properties
+                        var propsWithAttr = from type in types
+                                            where (type.IsClass || (type.IsValueType && !type.IsEnum && !type.IsPrimitive))
+                                            from prop in type.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
+                                            from attr in prop.GetCustomAttributes(typeof(ShaderValueAttribute), false).Cast<ShaderValueAttribute>()
+                                            where attr.GenerateHLSL == true
+                                            select (attr, prop);
+
+                        foreach (var (attr, prop) in propsWithAttr)
+                        {
+                            if (!sourceGenerators.TryGetValue(attr.sourcePath, out var generators))
+                            {
+                                generators = (new(), new());
+                                sourceGenerators.Add(attr.sourcePath, generators);
+                            }
+
+                            generators.Item2.Add(new ShaderBindingGenerator(prop, attr));
+
+                        }
+
+                        // Extract all types with the ShaderKernel tag
+                        var keywordAttrs = from type in types
+                                           where (type.IsClass || (type.IsValueType && !type.IsEnum && !type.IsPrimitive))
+                                           from field in type.GetFields(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
+                                           from attr in field.GetCustomAttributes(typeof(ShaderKeywordAttribute), false).Cast<ShaderKeywordAttribute>()
+                                           select (attr, field);
+
+                        foreach (var (attr, field) in keywordAttrs)
+                        {
+                            if (!keywordGenerators.TryGetValue(attr.sourcePath, out var generators))
+                            {
+                                generators = new();
+                                keywordGenerators.Add(attr.sourcePath, generators);
+                            }
+
+                            generators.Add(new ShaderKeywordGenerator(field, attr));
+                        }
+
+                    }
+                    catch (ReflectionTypeLoadException e) { /* Ignore typeload exception */ }
                 }
 
-                generators.Item1.Add(new ShaderTypeGenerator(type, attr));
+                // Generate all files
+                await Task.WhenAll(sourceGenerators.Select(async it =>
+                    await GenerateAsync($"{it.Key}.hlsl", $"{Path.ChangeExtension(it.Key, "custom")}.hlsl", it.Value.Item1, it.Value.Item2)));
+
+                await Task.WhenAll(keywordGenerators.Select(async it =>
+                    await GenerateKeywordsAsync($"{it.Key}.pragmas.hlsl", $"{Path.ChangeExtension(it.Key, "custom")}.hlsl", it.Value)));
             }
-            // Extract all types with the ShaderValue tag
-            var fieldsWithAttr = from assembly in AppDomain.CurrentDomain.GetAssemblies()
-                                from type in assembly.GetTypes()
-                                where (type.IsClass || (type.IsValueType && !type.IsEnum && !type.IsPrimitive))
-                                from field in type.GetFields(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
-                                from attr in field.GetCustomAttributes(typeof(ShaderValueAttribute), false).Cast<ShaderValueAttribute>()
-                                where attr.GenerateHLSL == true
-                                select (attr, field);
-
-            foreach (var (attr, field) in fieldsWithAttr)
-            {
-                if (!sourceGenerators.TryGetValue(attr.sourcePath, out var generators))
-                {
-                    generators = (new(), new());
-                    sourceGenerators.Add(attr.sourcePath, generators);
-                }
-
-                generators.Item2.Add(new ShaderBindingGenerator(field, attr));
-            }
-            // And properties
-            var propsWithAttr = from assembly in AppDomain.CurrentDomain.GetAssemblies()
-                                from type in assembly.GetTypes()
-                                where (type.IsClass || (type.IsValueType && !type.IsEnum && !type.IsPrimitive))
-                                from prop in type.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
-                                from attr in prop.GetCustomAttributes(typeof(ShaderValueAttribute), false).Cast<ShaderValueAttribute>()
-                                where attr.GenerateHLSL == true
-                                select (attr, prop);
-
-            foreach(var (attr, prop) in propsWithAttr)
-            {
-                if (!sourceGenerators.TryGetValue(attr.sourcePath, out var generators))
-                {
-                    generators = (new(), new());
-                    sourceGenerators.Add(attr.sourcePath, generators);
-                }
-
-                generators.Item2.Add(new ShaderBindingGenerator(prop, attr));
-
-            }
-
-            // Generate all files
-            await Task.WhenAll(sourceGenerators.Select(async it =>
-                await GenerateAsync($"{it.Key}.hlsl", $"{Path.ChangeExtension(it.Key, "custom")}.hlsl", it.Value.Item1, it.Value.Item2)));
-
-            var keywordGenerators = new Dictionary<string, List<ShaderKeywordGenerator>>();
-
-            // Extract all types with the ShaderKernel tag
-            var keywordAttrs = from assembly in AppDomain.CurrentDomain.GetAssemblies()
-                                 from type in assembly.GetTypes()
-                                 where (type.IsClass || (type.IsValueType && !type.IsEnum && !type.IsPrimitive))
-                                 from field in type.GetFields(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
-                                 from attr in field.GetCustomAttributes(typeof(ShaderKeywordAttribute), false).Cast<ShaderKeywordAttribute>()
-                                 select (attr, field);
-
-            foreach (var (attr, field) in keywordAttrs)
-            {
-                if (!keywordGenerators.TryGetValue(attr.sourcePath, out var generators))
-                {
-                    generators = new();
-                    keywordGenerators.Add(attr.sourcePath, generators);
-                }
-
-                generators.Add(new ShaderKeywordGenerator(field, attr));
-            }
-            await Task.WhenAll(keywordGenerators.Select(async it =>
-                await GenerateKeywordsAsync($"{it.Key}.pragmas.hlsl", $"{Path.ChangeExtension(it.Key, "custom")}.hlsl", it.Value)));
+            catch(Exception ex) { Debug.Log(ex); }
 
             Debug.Log("Generation completed");
         }
